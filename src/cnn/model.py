@@ -1,8 +1,8 @@
 from cnn.operations import *
 from cnn.utils import drop_path
 import chainer
-from chainer import functions as F
-from chainer import links as L
+from chainer import functions as func
+from chainer import links
 from chainer import Sequential
 
 
@@ -60,7 +60,7 @@ class Cell(chainer.Chain):
                     h2 = drop_path(h2, drop_prob)
             s = h1 + h2
             states += [s]
-        return F.concat((states[i] for i in self._concat), axis=1)
+        return func.concat((states[i] for i in self._concat), axis=1)
 
 
 class AuxiliaryHeadCIFAR(chainer.Chain):
@@ -69,20 +69,20 @@ class AuxiliaryHeadCIFAR(chainer.Chain):
         """assuming input size 8x8"""
         super(AuxiliaryHeadCIFAR, self).__init__()
         self.features = Sequential(
-            F.relu,
-            F.AveragePooling2D(ksize=5, stride=3, pad=0, cover_all=False).apply,  # image size = 2 x 2
-            L.Convolution2D(channels, 128, 1, nobias=True),
-            L.BatchNormalization(128),
-            F.relu,
-            L.Convolution2D(128, 768, 2, nobias=True),
-            L.BatchNormalization(768),
-            F.relu
+            func.relu,
+            func.AveragePooling2D(ksize=5, stride=3, pad=0, cover_all=False).apply,  # image size = 2 x 2
+            links.Convolution2D(channels, 128, 1, nobias=True),
+            links.BatchNormalization(128),
+            func.relu,
+            links.Convolution2D(128, 768, 2, nobias=True),
+            links.BatchNormalization(768),
+            func.relu
         )
-        self.classifier = L.Linear(768, num_classes)
+        self.classifier = links.Linear(768, num_classes)
 
     def __call__(self, x):
         h = self.features(x)
-        h = self.classifier(F.reshape(h, (h.shape[0], -1)))
+        h = self.classifier(func.reshape(h, (h.shape[0], -1)))
         return h
 
 
@@ -92,20 +92,20 @@ class AuxiliaryHeadImageNet(chainer.Chain):
         """assuming input size 14x14"""
         super(AuxiliaryHeadImageNet, self).__init__()
         self.features = Sequential(
-            F.relu,
-            F.AveragePooling2D(ksize=5, stride=2, pad=0, cover_all=False).apply,
-            L.Convolution2D(channels, 128, 1, nobias=True),
-            L.BatchNormalization(128),
-            F.relu,
-            L.Convolution2D(128, 768, 2, nobias=True),
-            L.BatchNormalization(768),
-            F.relu
+            func.relu,
+            func.AveragePooling2D(ksize=5, stride=2, pad=0, cover_all=False).apply,
+            links.Convolution2D(channels, 128, 1, nobias=True),
+            links.BatchNormalization(128),
+            func.relu,
+            links.Convolution2D(128, 768, 2, nobias=True),
+            links.BatchNormalization(768),
+            func.relu
         )
-        self.classifier = L.Linear(768, num_classes)
+        self.classifier = links.Linear(768, num_classes)
 
     def __call__(self, x):
         h = self.features(x)
-        h = self.classifier(F.reshape(h, (h.shape[0], -1)))
+        h = self.classifier(func.reshape(h, (h.shape[0], -1)))
         return h
 
 
@@ -119,8 +119,8 @@ class NetworkCIFAR(chainer.Chain):
         stem_multiplier = 3
         curr_ch = stem_multiplier * channels
         self.stem = Sequential(
-            L.Convolution2D(3, curr_ch, 3, pad=1, nobias=True),
-            L.BatchNormalization(curr_ch)
+            links.Convolution2D(3, curr_ch, 3, pad=1, nobias=True),
+            links.BatchNormalization(curr_ch)
         )
 
         pp_ch, p_ch, curr_ch = curr_ch, curr_ch, channels
@@ -142,7 +142,7 @@ class NetworkCIFAR(chainer.Chain):
         assert ch_to_auxiliary != -1
         if auxiliary:
             self.auxiliary_head = AuxiliaryHeadCIFAR(ch_to_auxiliary, num_classes)
-        self.classifier = L.Linear(p_ch, num_classes)
+        self.classifier = links.Linear(p_ch, num_classes)
 
     def __call__(self, x):
         logit_aux = None
@@ -165,17 +165,17 @@ class NetworkImageNet(chainer.Chain):
         self._auxiliary = auxiliary
 
         self.stem0 = Sequential(
-            L.Convolution2D(3, channels // 2, ksize=3, stride=2, pad=1, nobias=True),
-            L.BatchNormalization(channels // 2),
-            F.relu,
-            L.Convolution2D(channels // 2, channels, ksize=3, stride=2, pad=1, nobias=True),
-            L.BatchNormalization(channels),
+            links.Convolution2D(3, channels // 2, ksize=3, stride=2, pad=1, nobias=True),
+            links.BatchNormalization(channels // 2),
+            func.relu,
+            links.Convolution2D(channels // 2, channels, ksize=3, stride=2, pad=1, nobias=True),
+            links.BatchNormalization(channels),
         )
 
         self.stem1 = Sequential(
-            F.relu,
-            L.Convolution2D(channels, channels, 3, stride=2, pad=1, nobias=True),
-            L.BatchNormalization(channels),
+            func.relu,
+            links.Convolution2D(channels, channels, 3, stride=2, pad=1, nobias=True),
+            links.BatchNormalization(channels),
         )
 
         pp_ch, p_ch, curr_ch = channels, channels, channels
@@ -198,7 +198,7 @@ class NetworkImageNet(chainer.Chain):
         assert ch_to_auxiliary != -1
         if auxiliary:
             self.auxiliary_head = AuxiliaryHeadImageNet(ch_to_auxiliary, num_classes)
-        self.classifier = L.Linear(p_ch, num_classes)
+        self.classifier = links.Linear(p_ch, num_classes)
 
     def __call__(self, x):
         logit_aux = None
@@ -219,6 +219,6 @@ def _global_average_pooling_2d(x):
     F.mean(x, axis=(2, 3))
     """
     n, channel, rows, cols = x.data.shape
-    h = F.average_pooling_2d(x, (rows, cols), stride=1)
-    h = F.reshape(h, (n, channel))
+    h = func.average_pooling_2d(x, (rows, cols), stride=1)
+    h = func.reshape(h, (n, channel))
     return h
