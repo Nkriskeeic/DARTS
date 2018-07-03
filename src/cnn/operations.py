@@ -5,8 +5,8 @@ from chainer import Sequential
 
 OPS = {
     'none': lambda C, stride, affine: Zero(stride),
-    'avg_pool_3x3': lambda C, stride, affine: F.AveragePooling2D(ksize=3, stride=stride, pad=1, cover_all=False),
-    'max_pool_3x3': lambda C, stride, affine: F.MaxPooling2D(ksize=3, stride=stride, pad=1, cover_all=False),
+    'avg_pool_3x3': lambda C, stride, affine: F.AveragePooling2D(ksize=3, stride=stride, pad=1, cover_all=False).apply,
+    'max_pool_3x3': lambda C, stride, affine: F.MaxPooling2D(ksize=3, stride=stride, pad=1, cover_all=False).apply,
     'skip_connect': lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
     'sep_conv_3x3': lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
     'sep_conv_5x5': lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
