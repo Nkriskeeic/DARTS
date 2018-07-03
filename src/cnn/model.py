@@ -215,6 +215,9 @@ class NetworkImageNet(chainer.Chain):
 
 
 def _global_average_pooling_2d(x):
+    """
+    F.mean(x, axis=(2, 3))
+    """
     n, channel, rows, cols = x.data.shape
     h = F.average_pooling_2d(x, (rows, cols), stride=1)
     h = F.reshape(h, (n, channel))
