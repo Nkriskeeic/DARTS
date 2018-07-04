@@ -115,6 +115,7 @@ class Zero(chainer.Chain):
 class FactorizedReduce(chainer.Chain):
     """
     元実装: https://github.com/quark0/darts/blob/master/cnn/operations.py FactorizedReduceより
+    strideが2なので情報損失を防ぐために1, 1ずらしたものも混ぜる
     """
     def __init__(self, in_channels, out_channels, affine=True):
         super(FactorizedReduce, self).__init__()
