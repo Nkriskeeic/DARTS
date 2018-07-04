@@ -51,37 +51,14 @@ class DilConv(chainer.Chain):
         super(DilConv, self).__init__()
         self.op = Sequential(
             func.relu,
-            GroupedDilConv(in_channels, out_channels, k_size, stride, padding, dilation,
-                           groups=in_channels),
+            links.Convolution2D(in_channels, out_channels, k_size, stride, padding, dilation,
+                                groups=in_channels),
             links.Convolution2D(in_channels, out_channels, ksize=1, padding=0, nobias=True),
             links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
         )
 
     def __call__(self, x):
         return self.op(x)
-
-
-class GroupedDilConv(chainer.Chain):
-    """
-    Grouped Dilated Convolution実装．chainerを軽く探したけど見つけられなかったので取り敢えず．native実装があれば変更．
-    TODO: native実装があるかを調べる
-    """
-    def __init__(self, in_channels, out_channels, k_size, stride, padding, dilation, groups):
-        super(GroupedDilConv, self).__init__()
-        assert in_channels % groups == 0 and out_channels % groups == 0
-        grouped_in_channels = in_channels // groups
-        grouped_out_channels = out_channels // groups
-        self.groups = groups
-        with self.init_scope():
-            self.c = links.DilatedConvolution2D(grouped_in_channels, grouped_out_channels,
-                                                k_size, stride, padding, dilation, nobias=True)
-
-    def __call__(self, x):
-        _n, _c, _h, _w = x.shape
-        assert _c % self.groups
-        h = func.reshape(x, (_n * self.groups, _c // self.groups, _h, _w))
-        h = self.c(h)
-        return func.reshape(h, (_n, _c, h, _w))
 
 
 class SepConv(chainer.Chain):
@@ -95,11 +72,11 @@ class SepConv(chainer.Chain):
         super(SepConv, self).__init__()
         self.op = Sequential(
             func.relu,
-            links.DepthwiseConvolution2D(in_channels, 1, k_size, stride, padding, nobias=True),
+            links.Convolution2D(in_channels, 1, k_size, stride, padding, groups=in_channels, nobias=True),
             links.Convolution2D(in_channels, in_channels, ksize=1, pad=0, nobias=True),
             links.BatchNormalization(in_channels, use_gamma=affine, use_beta=affine),
             func.relu,
-            links.DepthwiseConvolution2D(in_channels, 1, k_size, stride=1, pad=padding, nobias=True),
+            links.Convolution2D(in_channels, 1, k_size, stride=1, pad=padding, groups=in_channels, nobias=True),
             links.Convolution2D(in_channels, out_channels, ksize=1, pad=0, nobias=True),
             links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
         )
