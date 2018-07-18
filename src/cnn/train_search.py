@@ -106,8 +106,8 @@ def main():
     train_transform = partial(utils.transform_cifar10,
                               mean=mean, std=std, cutout_length=args.cutout_length,
                               crop_size=args.crop_size, train=True)
-    valid_transform = partial(utils.transform_cifar10,mean=mean,
-                              std=std, cutout_length=args.cutout_length,
+    valid_transform = partial(utils.transform_cifar10,
+                              mean=mean, std=std, cutout_length=args.cutout_length,
                               crop_size=args.crop_size, train=True)
     train_data = TransformDataset(train, train_transform)
     valid_data = TransformDataset(test, valid_transform)
@@ -150,16 +150,16 @@ def main():
                      'elapsed_time']
     trainer.extend(
         extensions.PrintReport(display_items), trigger=display_interval)
-    trainer.extend(extensions.LogReport(trigger=(5000, 'iteration')))
+    trainer.extend(extensions.LogReport(trigger=(50, 'iteration')))
     trainer.extend(extensions.ProgressBar(update_interval=10))
 
     if extensions.PlotReport.available():
         trainer.extend(
             extensions.PlotReport(['main/weight/loss', 'main/architect/loss'],
-                                  file_name='loss.png', trigger=(500, 'iteration')))
+                                  file_name='loss.png', trigger=(50, 'iteration')))
         trainer.extend(
             extensions.PlotReport(['main/weight/accuracy', 'main/architect/accuracy'],
-                                  file_name='accuracy.png', trigger=(500, 'iteration'))
+                                  file_name='accuracy.png', trigger=(50, 'iteration'))
         )
     trainer.extend(check(model, args.out), trigger=(1, 'epoch'))
 

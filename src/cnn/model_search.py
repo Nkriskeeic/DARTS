@@ -20,32 +20,34 @@ class MixedOp(chainer.Chain):
                 self._ops.add_link(op)
 
     def __call__(self, x, weights):
-        h = 0
-        for w, op in zip(weights, self._ops):
-            h += w * op(x)
-        return h
+        # h = 0
+        # for w, op in zip(weights, self._ops):
+        #     h += w * op(x)
+        return sum(w * op(x) for w, op in zip(weights, self._ops))
 
 
 class Cell(chainer.Chain):
     def __init__(self, steps: int, multiplier: int, prev_prev_channels: int, prev_channels: int, channels: int,
                  reduction: bool, reduction_prev: bool):
         super(Cell, self).__init__()
-        with self.init_scope():
-            self.reduction = reduction
-            self.pp_ch = prev_prev_channels
-            self.p_ch = prev_channels
-            self.ch = channels
 
+        self.reduction = reduction
+        self.pp_ch = prev_prev_channels
+        self.p_ch = prev_channels
+        self.ch = channels
+        self._steps = steps
+        self._multiplier = multiplier
+
+        with self.init_scope():
             if reduction_prev:
                 self.pre_process0 = FactorizedReduce(self.pp_ch, self.ch, affine=False)
             else:
                 self.pre_process0 = ReLUConvBN(self.pp_ch, self.ch, 1, 1, 0, affine=False)
             self.pre_process1 = ReLUConvBN(self.p_ch, self.ch, 1, 1, 0, affine=False)
-            self._steps = steps
-            self._multiplier = multiplier
 
             self._ops = chainer.ChainList()
-            self._bns = chainer.ChainList()
+            # 元実装で定義されていた．でも使わなさそう
+            # self._bns = chainer.ChainList()
             for i in range(self._steps):
                 for j in range(2 + i):
                     stride = 2 if reduction and j < 2 else 1
@@ -59,9 +61,7 @@ class Cell(chainer.Chain):
         states = [s0, s1]
         offset = 0
         for i in range(self._steps):
-            s = 0
-            for j, h in enumerate(states):
-                s += self._ops[offset + j](h, weights[offset + j])
+            s = sum(self._ops[offset + j](h, weights[offset + j]) for j, h in enumerate(states))
             offset += len(states)
             states.append(s)
         return func.concat(states[-self._multiplier:], axis=1)
@@ -85,9 +85,8 @@ class Network(chainer.Chain):
         super(Network, self).__init__()
 
         # 初項2 (入力数), 項数steps, 公差1
-        k = int((steps + 1) * (2 + steps / 2))
+        k = int(steps * (2 * 2 + (steps - 1)) / 2)
         num_ops = len(PRIMITIVES)
-
         self._steps = steps
         self._multiplier = multiplier
 
@@ -120,26 +119,26 @@ class Network(chainer.Chain):
         self.alphas_normal = Attention(k, num_ops)
         self.alphas_reduce = Attention(k, num_ops)
         self._arch_parameters = [self.alphas_normal, self.alphas_reduce]
+        self.normal_shape = self.alphas_normal.attention.shape
+        self.reduce_shape = self.alphas_reduce.attention.shape
 
         self._criterion = criterion
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         s0 = s1 = self.stem(x)
+        normal_attention = func.softmax(
+            self.alphas_normal.attention.reshape((1, -1)), axis=1).reshape(self.normal_shape)
+        reduce_attention = func.softmax(
+            self.alphas_reduce.attention.reshape((1, -1)), axis=1).reshape(self.reduce_shape)
         for i, cell in enumerate(self.cells):
             if cell.reduction:
-                attention = self.alphas_reduce.attention
+                attention = reduce_attention
             else:
-                attention = self.alphas_normal.attention
-            shape = attention.shape
-            weights = func.softmax(attention.reshape((1, -1)), axis=1).reshape(shape)
-            s0, s1 = s1, cell(s0, s1, weights)
+                attention = normal_attention
+            s0, s1 = s1, cell(s0, s1, attention)
         out = self._global_average_pooling(s1)
         logit = self.classifier(out)
         return logit
-
-    def _loss(self, x, target):
-        logit = self(x)
-        return self._criterion(logit, target)
 
     @property
     def arch_parameters(self) -> List[chainer.Chain]:

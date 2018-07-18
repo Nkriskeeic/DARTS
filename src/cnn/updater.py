@@ -3,9 +3,12 @@ from model_search import Network
 from chainer.optimizer import Optimizer
 from chainer.optimizers import MomentumSGD
 from chainer import functions as func
-from typing import List
+from typing import List, Union
 import numpy as np
 import cupy as cp
+
+NDARRAY = Union[np.ndarray, cp.ndarray]
+NDARRAY_LIST = List[NDARRAY]
 
 
 class Updater(chainer.training.StandardUpdater):
@@ -25,47 +28,51 @@ class Updater(chainer.training.StandardUpdater):
         return loss
 
     def _update_arch(self, images_val, labels_val, images_train, labels_train):
+        model = self.model
         # save_weights
-        current_weights = [p.data for p in self.model.params()]
+        current_weights = [p.data for p in model.params()]
         # reset gradients
         optimizer_a: Optimizer = self.get_optimizer('architect')
         optimizer_a.target.cleargrads()
         # save current weights
-        predictions = self.model(images_train)
+        predictions = model(images_train)
         loss = func.softmax_cross_entropy(predictions, labels_train)
+        del predictions
         # calculate next gradient
         loss.backward()
+        del loss
         # w_k - \eta * \nabla_w L_{train}(w_k, \alpha_{k-1})
         # model.params() returns weights (not alphas)
-        for param in self.model.params():
+        for param in model.params():
             param.data -= self.eta * param.grad
         # calculate L_{val}(w_k - \eta * \nabla_w L_{train}(w_k, \alpha_{k-1}))
         optimizer_a.target.cleargrads()
-        predictions = self.model(images_val)
+        predictions = model(images_val)
         loss = func.softmax_cross_entropy(predictions, labels_val)
         accuracy = func.accuracy(predictions, labels_val)
-        chainer.report({'architect/loss': loss, 'architect/accuracy': accuracy}, self.model)
+        del predictions
+        chainer.report({'architect/loss': loss, 'architect/accuracy': accuracy}, model)
 
-        grads: List[chainer.Variable] = chainer.grad([loss], [p for ap in self.model.arch_parameters
-                                                              for p in ap.params()], set_grad=True)
-        theta: List[chainer.Variable] = [p for p in self.model.params()]
-        dtheta: List[chainer.Variable] = chainer.grad([loss], theta, set_grad=True)
+        arch_grads: List[chainer.Variable] = chainer.grad([loss], [p for ap in model.arch_parameters
+                                                                   for p in ap.params()], set_grad=True)
+        model_grads: List[chainer.Variable] = chainer.grad([loss], [p for p in model.params()])
+        vector: NDARRAY = [dt.data + self.network_weight_decay * t.data for dt, t in zip(model_grads, model.params())]
+        del model_grads
         self.model.cleargrads()
-        vector: List[self.model.xp.array] = [dt.data + self.network_weight_decay * t.data
-                                             for dt, t in zip(dtheta, theta)]
-        implicit_grads = self._hessian_vector_product(vector, images_train, labels_train)
-        for g, ig in zip(grads, implicit_grads):
+        implicit_grads: NDARRAY_LIST = self._hessian_vector_product(vector, images_train, labels_train)
+        del vector
+        for g, ig in zip(arch_grads, implicit_grads):
             g.data -= self.eta * ig
         optimizer_a.update()
+        del implicit_grads
+        del arch_grads
         # reset weights
-        for param, w in zip(self.model.params(), current_weights):
+        for param, w in zip(model.params(), current_weights):
             param.data = w
         del current_weights
 
-    def _hessian_vector_product(self,
-                                vector: List[cp.array] or List[np.array],
-                                images, labels, r=1e-2) -> List[cp.array] or List[np.array]:
-        norm = 0
+    def _hessian_vector_product(self, vector: NDARRAY_LIST, images: NDARRAY, labels: NDARRAY, r=1e-2) -> NDARRAY_LIST:
+        norm = 0.
         model = self.model
         for v in vector:
             norm += model.xp.sum(v ** 2)
@@ -75,7 +82,6 @@ class Updater(chainer.training.StandardUpdater):
         for p, v in zip(model.params(), vector):
             p.data += epsilon * v
         loss = func.softmax_cross_entropy(model(images), labels)
-        model.cleargrads()
         grads_p = chainer.grad([loss], [p for ap in self.model.arch_parameters for p in ap.params()])
 
         # calculate \nabla_\alpha L_{train}(w^-, \alpha)
