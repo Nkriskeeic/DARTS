@@ -82,9 +82,7 @@ class Updater(chainer.training.StandardUpdater):
         for p, v in zip(model.params(), vector):
             p.data -= 2 * epsilon * v
         loss = func.softmax_cross_entropy(model(images), labels)
-        print('forth forward')
         grads_n = chainer.grad([loss], [p for ap in self.model.arch_parameters for p in ap.params()])
-        print('forth backward')
 
         # Reset model weight
         for p, v in zip(model.params(), vector):

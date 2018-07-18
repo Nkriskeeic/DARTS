@@ -5,9 +5,8 @@ from chainer import Sequential
 
 OPS = {
     'none': lambda ch, stride, affine: Zero(stride),
-    'avg_pool_3x3': lambda ch, stride, affine:
-    func.AveragePooling2D(ksize=3, stride=stride, pad=1, cover_all=False).apply,
-    'max_pool_3x3': lambda ch, stride, affine: func.MaxPooling2D(ksize=3, stride=stride, pad=1, cover_all=False).apply,
+    'avg_pool_3x3': lambda ch, stride, affine: AveragePooling2D(ksize=3, stride=stride),
+    'max_pool_3x3': lambda ch, stride, affine: MaxPooling2D(ksize=3, stride=stride),
     'skip_connect': lambda ch, stride, affine: Identity() if stride == 1 else FactorizedReduce(ch, ch, affine=affine),
     'sep_conv_3x3': lambda ch, stride, affine: SepConv(ch, ch, 3, stride, 1, affine=affine),
     'sep_conv_5x5': lambda ch, stride, affine: SepConv(ch, ch, 5, stride, 2, affine=affine),
@@ -23,6 +22,26 @@ OPS = {
 }
 
 
+class MaxPooling2D(chainer.Chain):
+    def __init__(self, ksize: int, stride: int):
+        super(MaxPooling2D, self).__init__()
+        self.ksize = ksize
+        self.stride = stride
+
+    def __call__(self, x):
+        return func.max_pooling_2d(x, ksize=self.ksize, stride=self.stride, pad=1, cover_all=False)
+
+
+class AveragePooling2D(chainer.Chain):
+    def __init__(self, ksize: int, stride: int):
+        super(AveragePooling2D, self).__init__()
+        self.ksize = ksize
+        self.stride = stride
+
+    def __call__(self, x):
+        return func.average_pooling_2d(x, ksize=self.ksize, stride=self.stride, pad=1)
+
+
 class ReLUConvBN(chainer.Chain):
     """
     活性化(ReLU)→conv→BN
@@ -30,14 +49,15 @@ class ReLUConvBN(chainer.Chain):
     """
     def __init__(self, in_channels, out_channels, k_size, stride, padding, affine=True):
         super(ReLUConvBN, self).__init__()
-        self.op = Sequential(
-            func.relu,
-            links.Convolution2D(in_channels, out_channels, k_size, stride, padding, nobias=True),
-            # affineがFalseだとgammaとbetaはそれぞれ1と0になる
-            links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
-        )
+        with self.init_scope():
+            self.op = Sequential(
+                func.relu,
+                links.Convolution2D(in_channels, out_channels, k_size, stride, padding, nobias=True),
+                # affineがFalseだとgammaとbetaはそれぞれ1と0になる
+                links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
+            )
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         return self.op(x)
 
 
@@ -45,19 +65,19 @@ class DilConv(chainer.Chain):
     """
     活性化(ReLU)→depth-wise dilated conv→point-wise convolution→BN
     元実装: https://github.com/quark0/darts/blob/master/cnn/operations.py DilConvより
-    TODO: これってSeparable ConvolutionのDilated版だよね?
     """
     def __init__(self, in_channels, out_channels, k_size, stride, padding, dilation, affine=True):
         super(DilConv, self).__init__()
-        self.op = Sequential(
-            func.relu,
-            links.Convolution2D(in_channels, out_channels, k_size, stride, padding, dilation,
-                                groups=in_channels),
-            links.Convolution2D(in_channels, out_channels, ksize=1, padding=0, nobias=True),
-            links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
-        )
+        with self.init_scope():
+            self.op = Sequential(
+                func.relu,
+                links.Convolution2D(in_channels, out_channels, ksize=k_size, stride=stride,
+                                    pad=padding, dilate=dilation, groups=in_channels, nobias=True),
+                links.Convolution2D(in_channels, out_channels, ksize=1, pad=0, nobias=True),
+                links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
+            )
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         return self.op(x)
 
 
@@ -70,18 +90,19 @@ class SepConv(chainer.Chain):
     def __init__(self, in_channels, out_channels, k_size, stride, padding, affine=True):
         assert out_channels % in_channels == 0
         super(SepConv, self).__init__()
-        self.op = Sequential(
-            func.relu,
-            links.Convolution2D(in_channels, 1, k_size, stride, padding, groups=in_channels, nobias=True),
-            links.Convolution2D(in_channels, in_channels, ksize=1, pad=0, nobias=True),
-            links.BatchNormalization(in_channels, use_gamma=affine, use_beta=affine),
-            func.relu,
-            links.Convolution2D(in_channels, 1, k_size, stride=1, pad=padding, groups=in_channels, nobias=True),
-            links.Convolution2D(in_channels, out_channels, ksize=1, pad=0, nobias=True),
-            links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
-        )
+        with self.init_scope():
+            self.op = Sequential(
+                func.relu,
+                links.Convolution2D(in_channels, in_channels, k_size, stride, padding, groups=in_channels, nobias=True),
+                links.Convolution2D(in_channels, in_channels, ksize=1, pad=0, nobias=True),
+                links.BatchNormalization(in_channels, use_gamma=affine, use_beta=affine),
+                func.relu,
+                links.Convolution2D(in_channels, in_channels, k_size, stride=1, pad=padding, groups=in_channels, nobias=True),
+                links.Convolution2D(in_channels, out_channels, ksize=1, pad=0, nobias=True),
+                links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine),
+            )
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         return self.op(x)
 
 
@@ -106,7 +127,7 @@ class Zero(chainer.Chain):
         super(Zero, self).__init__()
         self.stride = stride
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         if self.stride == 1:
             return x * 0
         return x[:, :, ::self.stride, ::self.stride] * 0
@@ -125,7 +146,7 @@ class FactorizedReduce(chainer.Chain):
             self.conv_2 = links.Convolution2D(in_channels, out_channels // 2, ksize=1, stride=2, pad=0, nobias=True)
             self.bn = links.BatchNormalization(out_channels, use_gamma=affine, use_beta=affine)
 
-    def __call__(self, x):
+    def __call__(self, x) -> chainer.Variable:
         h = func.relu(x)
         h1 = self.conv_1(h)
         h2 = self.conv_2(h[:, :, 1:, 1:])
