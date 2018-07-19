@@ -2,44 +2,25 @@ import chainer
 from chainer import links
 from chainer import functions as func
 from chainer import Sequential
+from functools import partial
 
 OPS = {
-    'none': lambda ch, stride, affine: Zero(stride),
-    'avg_pool_3x3': lambda ch, stride, affine: AveragePooling2D(ksize=3, stride=stride),
-    'max_pool_3x3': lambda ch, stride, affine: MaxPooling2D(ksize=3, stride=stride),
-    'skip_connect': lambda ch, stride, affine: Identity() if stride == 1 else FactorizedReduce(ch, ch, affine=affine),
-    'sep_conv_3x3': lambda ch, stride, affine: SepConv(ch, ch, 3, stride, 1, affine=affine),
-    'sep_conv_5x5': lambda ch, stride, affine: SepConv(ch, ch, 5, stride, 2, affine=affine),
-    'sep_conv_7x7': lambda ch, stride, affine: SepConv(ch, ch, 7, stride, 3, affine=affine),
-    'dil_conv_3x3': lambda ch, stride, affine: DilConv(ch, ch, 3, stride, 2, 2, affine=affine),
-    'dil_conv_5x5': lambda ch, stride, affine: DilConv(ch, ch, 5, stride, 4, 2, affine=affine),
-    'conv_7x1_1x7': lambda ch, stride, affine: Sequential(
+    'none': lambda _ch, _stride, _affine: Zero(_stride),
+    'avg_pool_3x3': lambda _ch, _stride, _affine: partial(func.average_pooling_2d, ksize=3, stride=_stride, pad=1),
+    'max_pool_3x3': lambda _ch, _stride, _affine: partial(func.max_pooling_2d, ksize=3, stride=_stride, pad=1, cover_all=False),
+    'skip_connect': lambda _ch, _stride, _affine: Identity() if _stride == 1 else FactorizedReduce(_ch, _ch, affine=_affine),
+    'sep_conv_3x3': lambda _ch, _stride, _affine: SepConv(_ch, _ch, 3, _stride, 1, affine=_affine),
+    'sep_conv_5x5': lambda _ch, _stride, _affine: SepConv(_ch, _ch, 5, _stride, 2, affine=_affine),
+    'sep_conv_7x7': lambda _ch, _stride, _affine: SepConv(_ch, _ch, 7, _stride, 3, affine=_affine),
+    'dil_conv_3x3': lambda _ch, _stride, _affine: DilConv(_ch, _ch, 3, _stride, 2, 2, affine=_affine),
+    'dil_conv_5x5': lambda _ch, _stride, _affine: DilConv(_ch, _ch, 5, _stride, 4, 2, affine=_affine),
+    'conv_7x1_1x7': lambda _ch, _stride, _affine: Sequential(
         func.relu,
-        links.Convolution2D(ch, ch, (1, 7), stride=(1, stride), padding=(0, 3), nobias=True),
-        links.Convolution2D(ch, ch, (7, 1), stride=(stride, 1), padding=(3, 0), nobias=True),
-        links.BatchNormalization(ch, use_gamma=affine, use_beta=affine)
+        links.Convolution2D(_ch, _ch, (1, 7), stride=(1, _stride), padding=(0, 3), nobias=True),
+        links.Convolution2D(_ch, _ch, (7, 1), stride=(_stride, 1), padding=(3, 0), nobias=True),
+        links.BatchNormalization(_ch, use_gamma=_affine, use_beta=_affine)
     ),
 }
-
-
-class MaxPooling2D(chainer.Chain):
-    def __init__(self, ksize: int, stride: int):
-        super(MaxPooling2D, self).__init__()
-        self.ksize = ksize
-        self.stride = stride
-
-    def __call__(self, x):
-        return func.max_pooling_2d(x, ksize=self.ksize, stride=self.stride, pad=1, cover_all=False)
-
-
-class AveragePooling2D(chainer.Chain):
-    def __init__(self, ksize: int, stride: int):
-        super(AveragePooling2D, self).__init__()
-        self.ksize = ksize
-        self.stride = stride
-
-    def __call__(self, x):
-        return func.average_pooling_2d(x, ksize=self.ksize, stride=self.stride, pad=1)
 
 
 class ReLUConvBN(chainer.Chain):

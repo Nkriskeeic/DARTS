@@ -88,7 +88,7 @@ def main():
     model = Network(args.init_channels, cifar_classes, args.layers)
     if args.gpu > 0:
         model.to_gpu(args.gpu)
-    empty_input = model.xp.empty(shape=(1, 3, 32, 32), dtype=model.xp.float32)
+    empty_input = model.xp.empty(shape=(2, 3, 32, 32), dtype=model.xp.float32)
     logging.info("param size = %fMB", utils.count_parameters_in_mb(model, empty_input))
 
     optimizer_w = MomentumSGD(lr=args.learning_rate, momentum=args.momentum)
@@ -127,7 +127,7 @@ def main():
         network_weight_decay=args.weight_decay
     )
 
-    trainer = chainer.training.Trainer(updater, (args.epoch, 'epoch'), out=args.out)
+    trainer = chainer.training.Trainer(updater, (args.epoch, 'epoch'), out=args.save)
     trainer.extend(CosineAnnealingLR('lr', args.epoch, args.learning_rate_min, optimizer=optimizer_w))
     snapshot_interval = (args.snapshot, 'epoch')
     display_interval = (args.display, 'iteration')

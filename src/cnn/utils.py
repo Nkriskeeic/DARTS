@@ -87,7 +87,7 @@ def transform_cifar10(data: Tuple[np.ndarray, np.ndarray], mean: np.ndarray, std
 
 
 def count_parameters_in_mb(model, empty_input) -> float:
-    # tensor = np.empty((1, 3, 96, 96), dtype=np.float32)
+    # tensor = np.empty((2, 3, 96, 96), dtype=np.float32)
     with chainer.using_config('train', False), chainer.no_backprop_mode():
         model(empty_input)
     return sum(param.size for param in model.params())/1e6

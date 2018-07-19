@@ -70,11 +70,10 @@ class Cell(chainer.Chain):
 class Attention(chainer.Chain):
     def __init__(self, num_combinations: int, num_operations: int):
         super(Attention, self).__init__()
-        with self.init_scope():
-            self.attention = chainer.Parameter(
-                initializer=chainer.initializers.Normal(scale=1e-3),
-                shape=(num_combinations, num_operations)
-            )
+        self.attention = chainer.Parameter(
+            initializer=chainer.initializers.Normal(scale=1e-3),
+            shape=(num_combinations, num_operations)
+        )
 
 
 class Network(chainer.Chain):
@@ -169,8 +168,10 @@ class Network(chainer.Chain):
                 n += 1
             return gene
 
-        gene_normal = _parse(func.softmax(self.alphas_normal.attention, axis=-1).data)
-        gene_reduce = _parse(func.softmax(self.alphas_reduce.attention, axis=-1).data)
+        gene_normal = _parse(func.softmax(
+            self.alphas_normal.attention.reshape((1, -1)), axis=1).reshape(self.normal_shape).data)
+        gene_reduce = _parse(func.softmax(
+            self.alphas_reduce.attention.reshape((1, -1)), axis=1).reshape(self.normal_shape).data)
 
         concat = list(range(2 + self._steps - self._multiplier, self._steps + 2))
         genotype = Genotype(
@@ -185,5 +186,5 @@ class Network(chainer.Chain):
 
     def to_gpu(self, device=None):
         super().to_gpu(device=device)
-        self.alphas_normal.to_gpu(device=device)
-        self.alphas_reduce.to_gpu(device=device)
+        self.alphas_normal.attention.to_gpu(device=device)
+        self.alphas_reduce.attention.to_gpu(device=device)

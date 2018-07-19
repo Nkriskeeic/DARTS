@@ -4,10 +4,12 @@ import chainer
 from chainer import functions as func
 from chainer import links
 from chainer import Sequential
+from typing import List
 
 
 class Cell(chainer.Chain):
-    def __init__(self, genotype, prev_prev_channels, prev_channels, channels, reduction, reduction_prev):
+    def __init__(self, genotype, prev_prev_channels: int, prev_channels: int, channels: int,
+                 reduction: bool, reduction_prev: bool):
         super(Cell, self).__init__()
         self.pp_ch = prev_prev_channels
         self.p_ch = prev_channels
@@ -28,7 +30,7 @@ class Cell(chainer.Chain):
             concat = genotype.normal_concat
         self._compile(self.ch, op_names, indices, concat, reduction)
 
-    def _compile(self, ch, op_names, indices, concat, reduction):
+    def _compile(self, channels: int, op_names: List[str], indices: List[int], concat, reduction: bool):
         assert len(op_names) == len(indices)
         self._steps = len(op_names) // 2
         self._concat = concat
@@ -37,11 +39,11 @@ class Cell(chainer.Chain):
         self._ops = chainer.ChainList()
         for name, index in zip(op_names, indices):
             _stride = 2 if reduction and index < 2 else 1
-            op = OPS[name](ch, _stride, True)
+            op = OPS[name](channels, _stride, True)
             self._ops.add_link(op)
         self._indices = indices
 
-    def __call__(self, s0, s1, drop_prob):
+    def __call__(self, s0: chainer.Variable, s1: chainer.Variable, drop_prob: float) -> chainer.Variable:
         s0 = self.pre_process0(s0)
         s1 = self.pre_process1(s1)
 
@@ -70,7 +72,7 @@ class AuxiliaryHeadCIFAR(chainer.Chain):
         super(AuxiliaryHeadCIFAR, self).__init__()
         self.features = Sequential(
             func.relu,
-            func.AveragePooling2D(ksize=5, stride=3, pad=0, cover_all=False).apply,  # image size = 2 x 2
+            func.AveragePooling2D(ksize=5, stride=3, pad=0, cover_all=False),  # image size = 2 x 2
             links.Convolution2D(channels, 128, 1, nobias=True),
             links.BatchNormalization(128),
             func.relu,
@@ -113,7 +115,7 @@ class NetworkCIFAR(chainer.Chain):
 
     def __init__(self, channels: int, num_classes: int, layers: int, auxiliary, genotype):
         super(NetworkCIFAR, self).__init__()
-        self._layers: int = layers
+        self._layers = layers
         self._auxiliary = auxiliary
 
         stem_multiplier = 3

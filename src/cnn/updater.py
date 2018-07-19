@@ -112,7 +112,6 @@ class Updater(chainer.training.StandardUpdater):
         labels_a = self.converter(labels_a, self.device)
 
         # Weight update (not update architect parameters)
-        print('update weight')
         for architect_param in self.model.arch_parameters:
             architect_param.disable_update()
         optimizer_w.update(self._calc_loss, images_w, labels_w)
@@ -120,5 +119,5 @@ class Updater(chainer.training.StandardUpdater):
             architect_param.enable_update()
 
         # Architecture update
-        print('update architect')
         self._update_arch(images_a, labels_a, images_w, labels_w)
+        print(self.model.genotype())
